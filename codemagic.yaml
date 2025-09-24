@@ -1,121 +1,22 @@
+
 workflows:
   fyne_ios:
-    name: Fyne iOS Build for AltStore
-    max_build_duration: 60
+    name: Fyne iOS Build
     environment:
+      xcode: latest
       vars:
         APP_ID: com.kristus310.fynetest
-        APP_NAME: FyneTest
-        GO111MODULE: "on"
-      xcode: latest
-      ios_signing:
-        distribution_type: development  # For sideloading
-        bundle_identifier: com.kristus310.fynetest
-    cache:
-      cache_paths:
-        - $HOME/go/pkg/mod
-        - $HOME/.cache/go-build
     scripts:
-      - name: Install Go
+      - name: Install Go and Fyne
         script: |
           brew install go
-          go version
-          
-      - name: Install Fyne CLI
-        script: |
-          export PATH=$PATH:$(go env GOPATH)/bin
           go install fyne.io/tools/cmd/fyne@latest
-          fyne version
-          
-      - name: Verify Project
-        script: |
-          cd $CM_PROJECT_DIR
-          echo "Project contents:"
-          ls -la
-          
-          # Initialize go module if needed
-          if [ ! -f "go.mod" ]; then
-            go mod init $APP_ID
-          fi
-          
-          # Check for main.go
-          if [ ! -f "main.go" ]; then
-            echo "Warning: main.go not found"
-          fi
-          
-      - name: Build Dependencies
-        script: |
-          cd $CM_PROJECT_DIR
-          go mod tidy
+          export PATH=$PATH:$(go env GOPATH)/bin
           
       - name: Build iOS App
         script: |
           export PATH=$PATH:$(go env GOPATH)/bin
-          cd $CM_PROJECT_DIR
-          
-          echo "Building Fyne iOS app for sideloading..."
-          fyne package \
-            --target ios \
-            --id $APP_ID \
-            --name "$APP_NAME" \
-            --release
-            
-      - name: Build IPA for Sideloading
-        script: |
-          cd $CM_PROJECT_DIR/ios
-          
-          echo "Building for device (development signing)..."
-          xcodebuild clean build \
-            -project "$APP_NAME.xcodeproj" \
-            -scheme "$APP_NAME" \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination generic/platform=iOS \
-            CODE_SIGN_IDENTITY="iPhone Developer" \
-            DEVELOPMENT_TEAM="$APPLE_DEVELOPER_TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER"
-            
-          # Create IPA manually for sideloading
-          echo "Creating IPA for sideloading..."
-          mkdir -p build/Payload
-          cp -R build/Release-iphoneos/$APP_NAME.app build/Payload/
-          cd build
-          zip -r $APP_NAME.ipa Payload/
-          
-      - name: Verify IPA
-        script: |
-          cd $CM_PROJECT_DIR/ios/build
-          if [ -f "$APP_NAME.ipa" ]; then
-            echo "✅ IPA created successfully!"
-            ls -lh $APP_NAME.ipa
-            echo "File size: $(du -h $APP_NAME.ipa | cut -f1)"
-          else
-            echo "❌ IPA not found"
-            echo "Available files:"
-            ls -la
-          fi
+          fyne package -os ios -app-id $APP_ID -icon Icon.png
           
     artifacts:
-      - ios/build/*.ipa
-      - ios/build/Release-iphoneos/*.app
-      
-    publishing:
-      email:
-        recipients:
-          - your-email@example.com
-        notify:
-          success: true
-          failure: true
-      scripts:
-        - name: AltStore Instructions
-          script: |
-            echo "🎉 Build completed!"
-            echo ""
-            echo "📱 To install with AltStore:"
-            echo "1. Download the IPA from artifacts"
-            echo "2. Open AltStore on your device"
-            echo "3. Tap the '+' button"
-            echo "4. Select the IPA file"
-            echo "5. AltStore will install it!"
-            echo ""
-            echo "💡 Make sure AltStore is refreshed and connected to AltServer"
+      - "*.app"
