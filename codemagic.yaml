@@ -1,0 +1,28 @@
+workflows:
+  fyne_ios:
+    name: Fyne iOS Build
+    max_build_duration: 60
+    environment:
+      vars:
+        APP_ID: com.kristus310.fynetest
+        GO111MODULE: "on"
+      flutter: stable # not used, just placeholder
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install Go
+        script: brew install go
+      - name: Install Fyne CLI
+        script: go install fyne.io/fyne/v2/cmd/fyne@latest
+      - name: Build iOS Project
+        script: |
+          cd $CM_PROJECT_DIR
+          fyne package -os ios -app-id $APP_ID
+      - name: Build IPA
+        script: |
+          cd ios
+          xcodebuild -project FyneTest.xcodeproj -scheme FyneTest -configuration Release -sdk iphoneos
+    publishing:
+      scripts:
+        - name: Publish IPA
+          script: echo "IPA will be available in artifacts"
