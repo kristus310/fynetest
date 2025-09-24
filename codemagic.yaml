@@ -16,7 +16,7 @@ workflows:
       - name: Build iOS App
         script: |
           export PATH=$PATH:$(go env GOPATH)/bin
-          fyne package -os ios -app-id $APP_ID -icon Icon.png
+          fyne package -os iossimulator -app-id $APP_ID -icon Icon.png
           
     artifacts:
       - "*.app"
