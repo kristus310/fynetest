@@ -1,18 +1,15 @@
 workflows:
   fyne_ios:
-    name: Fyne iOS Build
+    name: Fyne iOS Build for AltStore
     max_build_duration: 60
     environment:
       vars:
         APP_ID: com.kristus310.fynetest
         APP_NAME: FyneTest
         GO111MODULE: "on"
-        # Add Go version for consistency
-        GO_VERSION: "1.21"
       xcode: latest
-      # Add iOS signing configuration
       ios_signing:
-        distribution_type: app_store  # or 'ad_hoc' for testing
+        distribution_type: development  # For sideloading
         bundle_identifier: com.kristus310.fynetest
     cache:
       cache_paths:
@@ -21,12 +18,7 @@ workflows:
     scripts:
       - name: Install Go
         script: |
-          # Use specific Go version for reproducibility
-          if ! command -v go &> /dev/null || [[ $(go version | grep -o "go[0-9.]*" | head -1) != "go${GO_VERSION}" ]]; then
-            brew install go@${GO_VERSION}
-            echo 'export PATH="/opt/homebrew/opt/go@${GO_VERSION}/bin:$PATH"' >> ~/.zshrc
-            source ~/.zshrc
-          fi
+          brew install go
           go version
           
       - name: Install Fyne CLI
@@ -35,116 +27,95 @@ workflows:
           go install fyne.io/tools/cmd/fyne@latest
           fyne version
           
-      - name: Verify Project Structure
+      - name: Verify Project
         script: |
-          echo "Project directory contents:"
-          ls -la $CM_PROJECT_DIR
-          echo "Checking for go.mod:"
-          if [ ! -f "$CM_PROJECT_DIR/go.mod" ]; then
-            echo "Warning: go.mod not found. Initializing module..."
-            cd $CM_PROJECT_DIR
+          cd $CM_PROJECT_DIR
+          echo "Project contents:"
+          ls -la
+          
+          # Initialize go module if needed
+          if [ ! -f "go.mod" ]; then
             go mod init $APP_ID
           fi
-          echo "Checking for Icon.png:"
-          if [ ! -f "$CM_PROJECT_DIR/Icon.png" ]; then
-            echo "Warning: Icon.png not found in project root"
+          
+          # Check for main.go
+          if [ ! -f "main.go" ]; then
+            echo "Warning: main.go not found"
           fi
           
-      - name: Download Dependencies
+      - name: Build Dependencies
         script: |
           cd $CM_PROJECT_DIR
           go mod tidy
-          go mod download
           
-      - name: Build iOS Project
+      - name: Build iOS App
         script: |
           export PATH=$PATH:$(go env GOPATH)/bin
           cd $CM_PROJECT_DIR
           
-          # Ensure we have the icon or create a default one
-          if [ ! -f "Icon.png" ]; then
-            echo "Creating default icon..."
-            # You might want to include a default icon in your repository
-            echo "Warning: Using default system icon"
-          fi
-          
-          echo "Building Fyne iOS project..."
+          echo "Building Fyne iOS app for sideloading..."
           fyne package \
             --target ios \
             --id $APP_ID \
             --name "$APP_NAME" \
-            --icon Icon.png \
             --release
             
-      - name: Build and Archive IPA
+      - name: Build IPA for Sideloading
         script: |
           cd $CM_PROJECT_DIR/ios
           
-          # Check if Xcode project exists
-          if [ ! -d "$APP_NAME.xcodeproj" ]; then
-            echo "Error: Xcode project $APP_NAME.xcodeproj not found"
-            exit 1
-          fi
-          
-          echo "Building iOS app..."
-          xcodebuild clean \
-            -project "$APP_NAME.xcodeproj" \
-            -scheme "$APP_NAME" \
-            -configuration Release
-            
-          xcodebuild archive \
+          echo "Building for device (development signing)..."
+          xcodebuild clean build \
             -project "$APP_NAME.xcodeproj" \
             -scheme "$APP_NAME" \
             -configuration Release \
             -sdk iphoneos \
-            -archivePath "$APP_NAME.xcarchive" \
+            -destination generic/platform=iOS \
+            CODE_SIGN_IDENTITY="iPhone Developer" \
             DEVELOPMENT_TEAM="$APPLE_DEVELOPER_TEAM_ID" \
-            CODE_SIGN_IDENTITY="iPhone Distribution"
+            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER"
             
-          echo "Exporting IPA..."
-          xcodebuild -exportArchive \
-            -archivePath "$APP_NAME.xcarchive" \
-            -exportOptionsPlist exportOptions.plist \
-            -exportPath ./build
-            
-      - name: Verify Build Output
+          # Create IPA manually for sideloading
+          echo "Creating IPA for sideloading..."
+          mkdir -p build/Payload
+          cp -R build/Release-iphoneos/$APP_NAME.app build/Payload/
+          cd build
+          zip -r $APP_NAME.ipa Payload/
+          
+      - name: Verify IPA
         script: |
-          echo "Build artifacts:"
-          find $CM_PROJECT_DIR -name "*.ipa" -o -name "*.xcarchive"
-          ls -la $CM_PROJECT_DIR/ios/build/ || echo "Build directory not found"
+          cd $CM_PROJECT_DIR/ios/build
+          if [ -f "$APP_NAME.ipa" ]; then
+            echo "✅ IPA created successfully!"
+            ls -lh $APP_NAME.ipa
+            echo "File size: $(du -h $APP_NAME.ipa | cut -f1)"
+          else
+            echo "❌ IPA not found"
+            echo "Available files:"
+            ls -la
+          fi
           
     artifacts:
       - ios/build/*.ipa
-      - ios/$APP_NAME.xcarchive
-      - ios/build/Apps/$APP_NAME.app
+      - ios/build/Release-iphoneos/*.app
       
     publishing:
-      # App Store Connect publishing (optional)
-      app_store_connect:
-        auth: integration  # Use App Store Connect API key integration
-        submit_to_testflight: true
-        
-      # Email notification
       email:
         recipients:
           - your-email@example.com
         notify:
           success: true
           failure: true
-          
       scripts:
-        - name: Publish Build Info
+        - name: AltStore Instructions
           script: |
-            echo "=== Build Summary ==="
-            echo "App ID: $APP_ID"
-            echo "App Name: $APP_NAME"
-            echo "Build completed at: $(date)"
-            
-            if [ -f "ios/build/$APP_NAME.ipa" ]; then
-              echo "✅ IPA successfully created"
-              ls -lh ios/build/$APP_NAME.ipa
-            else
-              echo "❌ IPA not found"
-              echo "Available files:"
-              find . -name "*.ipa" 2>/dev/null || echo "No IPA files found"
-            fi
+            echo "🎉 Build completed!"
+            echo ""
+            echo "📱 To install with AltStore:"
+            echo "1. Download the IPA from artifacts"
+            echo "2. Open AltStore on your device"
+            echo "3. Tap the '+' button"
+            echo "4. Select the IPA file"
+            echo "5. AltStore will install it!"
+            echo ""
+            echo "💡 Make sure AltStore is refreshed and connected to AltServer"
