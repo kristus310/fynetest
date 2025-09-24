@@ -1,4 +1,3 @@
-
 workflows:
   fyne_ios:
     name: Fyne iOS Build
@@ -16,7 +15,10 @@ workflows:
       - name: Build iOS App
         script: |
           export PATH=$PATH:$(go env GOPATH)/bin
-          fyne package -os iossimulator -app-id $APP_ID -icon Icon.png
+          export CGO_ENABLED=1
+          export GOOS=ios
+          export GOARCH=arm64
+          fyne package -os iossimulator -app-id $APP_ID -icon Icon.png -metadata SkipSign=true
           
     artifacts:
       - "*.app"
