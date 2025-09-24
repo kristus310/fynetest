@@ -19,7 +19,7 @@ workflows:
         script: |
           export PATH=$PATH:$(go env GOPATH)/bin
           cd $CM_PROJECT_DIR
-          fyne package --target ios --id $APP_ID --name FyneTest --icon Icon.png
+          fyne package -os ios --app-id $APP_ID -icon Icon.png
       - name: Build Unsigned IPA
         script: |
           cd ios
