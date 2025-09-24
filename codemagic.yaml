@@ -21,7 +21,7 @@ workflows:
         script: |
           export PATH=$PATH:$(go env GOPATH)/bin
           cd $CM_PROJECT_DIR
-          fyne package --target ios --id $APP_ID --name FyneTest --icon Icon.png
+          fyne package --target ios --id $APP_ID --name FyneTest --icon "$CM_PROJECT_DIR/Icon.png"
 
       - name: Build IPA
         script: |
