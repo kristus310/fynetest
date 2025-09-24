@@ -1,24 +1,36 @@
 workflows:
   fyne_ios:
     name: Fyne iOS Build
+    max_build_duration: 60
     environment:
-      xcode: latest
       vars:
         APP_ID: com.kristus310.fynetest
+        APP_NAME: FyneTest
+        GO111MODULE: "on"
+      xcode: latest
     scripts:
-      - name: Install Go and Fyne
+      - name: Install Go
+        script: brew install go
+      - name: Install Fyne CLI
         script: |
-          brew install go
           go install fyne.io/tools/cmd/fyne@latest
           export PATH=$PATH:$(go env GOPATH)/bin
-          
-      - name: Build iOS App
+      - name: Build iOS Project
         script: |
           export PATH=$PATH:$(go env GOPATH)/bin
-          export CGO_ENABLED=1
-          export GOOS=ios
-          export GOARCH=arm64
-          fyne package -os iossimulator -app-id $APP_ID -icon Icon.png -metadata SkipSign=true
-          
+          cd $CM_PROJECT_DIR
+          fyne package --target ios --id $APP_ID --name FyneTest --icon Icon.png
+      - name: Build Unsigned IPA
+        script: |
+          cd ios
+          xcodebuild -project $APP_NAME.xcodeproj -scheme $APP_NAME -configuration Release -sdk iphoneos CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+          mkdir -p build/Payload
+          cp -R build/Release-iphoneos/$APP_NAME.app build/Payload/
+          cd build
+          zip -r $APP_NAME.ipa Payload/
     artifacts:
-      - "*.app"
+      - ios/build/*.ipa
+    publishing:
+      scripts:
+        - name: Publish IPA
+          script: echo "Unsigned IPA will be available in artifacts"
