@@ -7,28 +7,144 @@ workflows:
         APP_ID: com.kristus310.fynetest
         APP_NAME: FyneTest
         GO111MODULE: "on"
+        # Add Go version for consistency
+        GO_VERSION: "1.21"
       xcode: latest
+      # Add iOS signing configuration
+      ios_signing:
+        distribution_type: app_store  # or 'ad_hoc' for testing
+        bundle_identifier: com.kristus310.fynetest
+    cache:
+      cache_paths:
+        - $HOME/go/pkg/mod
+        - $HOME/.cache/go-build
     scripts:
       - name: Install Go
-        script: brew install go
-
+        script: |
+          # Use specific Go version for reproducibility
+          if ! command -v go &> /dev/null || [[ $(go version | grep -o "go[0-9.]*" | head -1) != "go${GO_VERSION}" ]]; then
+            brew install go@${GO_VERSION}
+            echo 'export PATH="/opt/homebrew/opt/go@${GO_VERSION}/bin:$PATH"' >> ~/.zshrc
+            source ~/.zshrc
+          fi
+          go version
+          
       - name: Install Fyne CLI
         script: |
-          go install fyne.io/tools/cmd/fyne@latest
           export PATH=$PATH:$(go env GOPATH)/bin
-
+          go install fyne.io/tools/cmd/fyne@latest
+          fyne version
+          
+      - name: Verify Project Structure
+        script: |
+          echo "Project directory contents:"
+          ls -la $CM_PROJECT_DIR
+          echo "Checking for go.mod:"
+          if [ ! -f "$CM_PROJECT_DIR/go.mod" ]; then
+            echo "Warning: go.mod not found. Initializing module..."
+            cd $CM_PROJECT_DIR
+            go mod init $APP_ID
+          fi
+          echo "Checking for Icon.png:"
+          if [ ! -f "$CM_PROJECT_DIR/Icon.png" ]; then
+            echo "Warning: Icon.png not found in project root"
+          fi
+          
+      - name: Download Dependencies
+        script: |
+          cd $CM_PROJECT_DIR
+          go mod tidy
+          go mod download
+          
       - name: Build iOS Project
         script: |
           export PATH=$PATH:$(go env GOPATH)/bin
           cd $CM_PROJECT_DIR
-          fyne package --target ios --id $APP_ID --name FyneTest --icon Icon.png
-
-      - name: Build IPA
+          
+          # Ensure we have the icon or create a default one
+          if [ ! -f "Icon.png" ]; then
+            echo "Creating default icon..."
+            # You might want to include a default icon in your repository
+            echo "Warning: Using default system icon"
+          fi
+          
+          echo "Building Fyne iOS project..."
+          fyne package \
+            --target ios \
+            --id $APP_ID \
+            --name "$APP_NAME" \
+            --icon Icon.png \
+            --release
+            
+      - name: Build and Archive IPA
         script: |
-          cd ios
-          xcodebuild -project $APP_NAME.xcodeproj -scheme $APP_NAME -configuration Release -sdk iphoneos
-
+          cd $CM_PROJECT_DIR/ios
+          
+          # Check if Xcode project exists
+          if [ ! -d "$APP_NAME.xcodeproj" ]; then
+            echo "Error: Xcode project $APP_NAME.xcodeproj not found"
+            exit 1
+          fi
+          
+          echo "Building iOS app..."
+          xcodebuild clean \
+            -project "$APP_NAME.xcodeproj" \
+            -scheme "$APP_NAME" \
+            -configuration Release
+            
+          xcodebuild archive \
+            -project "$APP_NAME.xcodeproj" \
+            -scheme "$APP_NAME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath "$APP_NAME.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_DEVELOPER_TEAM_ID" \
+            CODE_SIGN_IDENTITY="iPhone Distribution"
+            
+          echo "Exporting IPA..."
+          xcodebuild -exportArchive \
+            -archivePath "$APP_NAME.xcarchive" \
+            -exportOptionsPlist exportOptions.plist \
+            -exportPath ./build
+            
+      - name: Verify Build Output
+        script: |
+          echo "Build artifacts:"
+          find $CM_PROJECT_DIR -name "*.ipa" -o -name "*.xcarchive"
+          ls -la $CM_PROJECT_DIR/ios/build/ || echo "Build directory not found"
+          
+    artifacts:
+      - ios/build/*.ipa
+      - ios/$APP_NAME.xcarchive
+      - ios/build/Apps/$APP_NAME.app
+      
     publishing:
+      # App Store Connect publishing (optional)
+      app_store_connect:
+        auth: integration  # Use App Store Connect API key integration
+        submit_to_testflight: true
+        
+      # Email notification
+      email:
+        recipients:
+          - your-email@example.com
+        notify:
+          success: true
+          failure: true
+          
       scripts:
-        - name: Publish IPA
-          script: echo "IPA will be available in artifacts"
+        - name: Publish Build Info
+          script: |
+            echo "=== Build Summary ==="
+            echo "App ID: $APP_ID"
+            echo "App Name: $APP_NAME"
+            echo "Build completed at: $(date)"
+            
+            if [ -f "ios/build/$APP_NAME.ipa" ]; then
+              echo "✅ IPA successfully created"
+              ls -lh ios/build/$APP_NAME.ipa
+            else
+              echo "❌ IPA not found"
+              echo "Available files:"
+              find . -name "*.ipa" 2>/dev/null || echo "No IPA files found"
+            fi
